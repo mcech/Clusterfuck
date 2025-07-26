@@ -15,11 +15,15 @@ public class BroadcastSocket implements Closeable {
 	public BroadcastSocket() throws IOException {
 		socket_ = new DatagramSocket();
 		socket_.setBroadcast(true);
+		byte[] buffer = new byte[Character.MAX_VALUE];
+		packet_ = new DatagramPacket(buffer, buffer.length);
 	}
 	
 	public BroadcastSocket(int port) throws IOException {
 		socket_ = new DatagramSocket(port);
 		socket_.setBroadcast(true);
+		byte[] buffer = new byte[Character.MAX_VALUE];
+		packet_ = new DatagramPacket(buffer, buffer.length);
 	}
 	
 	public int getLocalPort() {
@@ -42,9 +46,6 @@ public class BroadcastSocket implements Closeable {
 	}
 	
 	public DatagramPacket receive() throws IOException {
-		byte[] buffer = new byte[Character.MAX_VALUE];
-		DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-		
 		if (timeout_ > 0) {
 			long endTime = System.currentTimeMillis() + timeout_;
 			while (true) {
@@ -53,14 +54,11 @@ public class BroadcastSocket implements Closeable {
 					throw new SocketTimeoutException();
 				}
 				socket_.setSoTimeout(remaining);
-				try {
-					packet.setLength(Character.MAX_VALUE);
-					socket_.receive(packet);
-				}
-				catch (SocketTimeoutException ignore) {}
-				if (!isLocalAddress(packet.getAddress())) {
-					byte[] result = Arrays.copyOf(packet.getData(), packet.getLength());
-					return new DatagramPacket(result, result.length, packet.getSocketAddress());
+				packet_.setLength(Character.MAX_VALUE);
+				socket_.receive(packet_);
+				if (!isLocalAddress(packet_.getAddress()) || packet_.getPort() != socket_.getLocalPort()) {
+					byte[] result = Arrays.copyOf(packet_.getData(), packet_.getLength());
+					return new DatagramPacket(result, result.length, packet_.getSocketAddress());
 				}
 			}
 		}
@@ -68,12 +66,13 @@ public class BroadcastSocket implements Closeable {
 			while (true) {
 				socket_.setSoTimeout(0);
 				try {
-					packet.setLength(Character.MAX_VALUE);
-					socket_.receive(packet);
+					packet_.setLength(Character.MAX_VALUE);
+					socket_.receive(packet_);
 				}
 				catch (SocketTimeoutException ignore) {}
-				if (!isLocalAddress(packet.getAddress())) {
-					return packet;
+				if (!isLocalAddress(packet_.getAddress()) || packet_.getPort() != socket_.getLocalPort()) {
+					byte[] result = Arrays.copyOf(packet_.getData(), packet_.getLength());
+					return new DatagramPacket(result, result.length, packet_.getSocketAddress());
 				}
 			}
 		}
@@ -98,6 +97,7 @@ public class BroadcastSocket implements Closeable {
 		return NetworkInterface.networkInterfaces().flatMap(netIf -> netIf.inetAddresses()).anyMatch(addr -> addr.equals(address));
 	}
 	
-	private DatagramSocket socket_;
+	private final DatagramSocket socket_;
+	private final DatagramPacket packet_;
 	private int timeout_;
 }
